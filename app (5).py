@@ -24,18 +24,15 @@ FILE_MAP = {
     ("Reducing", "LAP"):       "lap - reducing.xlsx",
 }
 
-# GST is fixed and always applied on top of the Loader-adjusted rate.
+# GST is fixed and always applied on top of the base rate.
 GST_RATE_FIXED = 18.0
 
 # ============================================
-# LOADER + GST FORMULA (applied to every rate before premium is computed):
-#   Rate After Loader = Base Rate / (1 - Loader% / 100)
-#   Final Rate         = Rate After Loader x (1 + GST% / 100)
+# GST FORMULA (applied to every rate before premium is computed):
+#   Final Rate = Base Rate x (1 + GST% / 100)
 # ============================================
-def apply_loader_and_gst(base_rate, loader_pct, gst_pct=GST_RATE_FIXED):
-    after_loader = base_rate / (1 - (loader_pct / 100.0))
-    final_rate = after_loader * (1 + (gst_pct / 100.0))
-    return final_rate
+def apply_gst(base_rate, gst_pct=GST_RATE_FIXED):
+    return base_rate * (1 + (gst_pct / 100.0))
 
 
 def load_rate_table(cover_type, loan_type):
@@ -127,22 +124,6 @@ with col2:
     cover_type = st.selectbox("Select Type of Cover", ["Level", "Reducing"])
 
 # ============================================
-# SHARED LOADER % — applied to every rate (Manual + Bulk)
-# before computing premium. GST @ 18% is then added automatically on top.
-# ============================================
-st.subheader("⚙️ Loader Setting")
-loader_pct_input = st.number_input(
-    "Loader % (optional; GST 18% added automatically)",
-    min_value=0.0,
-    max_value=99.99,
-    value=None,
-    step=1.0,
-    placeholder="Enter loader % (optional, defaults to 0)",
-    key="shared_loader_pct"
-)
-loader_pct = loader_pct_input if loader_pct_input is not None else 0.0
-
-# ============================================
 # SUM ASSURED RANGE — rates in the backend files are per ₹1,00,000
 # Home Loan: ₹50,000 – ₹60,00,000 | LAP: ₹50,000 – ₹40,00,000
 # ============================================
@@ -191,11 +172,11 @@ if st.button("Get Rate", type="primary"):
     try:
         df_rates, tenure_map = load_rate_table(cover_type, loan_type)
         base_rate = get_rate(df_rates, tenure_map, age, tenure)
-        final_rate = apply_loader_and_gst(base_rate, loader_pct)
+        final_rate = apply_gst(base_rate)
         premium = final_rate * (sum_assured_manual / 100000)
         st.success(
             f"✅ {loan_type} | {cover_type} Cover | Age {age} | Tenure {tenure} yrs | "
-            f"Sum Assured ₹{sum_assured_manual:,} | Loader {loader_pct}% | GST {GST_RATE_FIXED}%"
+            f"Sum Assured ₹{sum_assured_manual:,} | GST {GST_RATE_FIXED}%"
         )
         st.metric("Premium", f"₹ {premium:,.2f}")
     except Exception as e:
@@ -287,7 +268,7 @@ if uploaded_file is not None:
                     raise ValueError(f"Sum Assured must be between ₹{sa_min:,} and ₹{sa_max:,}")
 
                 r_base = get_rate(df_rates, tenure_map, r_age, r_tenure)
-                r_final = apply_loader_and_gst(r_base, loader_pct)
+                r_final = apply_gst(r_base)
                 premium = round(r_final * (r_sa / 100000), 2)
                 premiums.append(premium)
                 statuses.append("✅")
