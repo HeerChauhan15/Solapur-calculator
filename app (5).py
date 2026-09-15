@@ -35,6 +35,14 @@ def apply_gst(base_rate, gst_pct=GST_RATE_FIXED):
     return base_rate * (1 + (gst_pct / 100.0))
 
 
+def premium_breakup(base_rate, sum_assured, gst_pct=GST_RATE_FIXED):
+    """Returns (premium excl GST, GST amount, premium incl GST)."""
+    excl_gst = base_rate * (sum_assured / 100000)
+    gst_amt = excl_gst * (gst_pct / 100.0)
+    incl_gst = excl_gst + gst_amt
+    return round(excl_gst, 2), round(gst_amt, 2), round(incl_gst, 2)
+
+
 def load_rate_table(cover_type, loan_type):
     fname = FILE_MAP[(cover_type, loan_type)]
     if not os.path.exists(fname):
@@ -172,13 +180,15 @@ if st.button("Get Rate", type="primary"):
     try:
         df_rates, tenure_map = load_rate_table(cover_type, loan_type)
         base_rate = get_rate(df_rates, tenure_map, age, tenure)
-        final_rate = apply_gst(base_rate)
-        premium = final_rate * (sum_assured_manual / 100000)
+        excl_gst, gst_amt, incl_gst = premium_breakup(base_rate, sum_assured_manual)
         st.success(
             f"✅ {loan_type} | {cover_type} Cover | Age {age} | Tenure {tenure} yrs | "
             f"Sum Assured ₹{sum_assured_manual:,} | GST {GST_RATE_FIXED}%"
         )
-        st.metric("Premium", f"₹ {premium:,.2f}")
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Premium (Excl. GST)", f"₹ {excl_gst:,.2f}")
+        m2.metric(f"GST @ {GST_RATE_FIXED:g}%", f"₹ {gst_amt:,.2f}")
+        m3.metric("Premium (Incl. GST)", f"₹ {incl_gst:,.2f}")
     except Exception as e:
         st.error(f"Error: {e}")
 
@@ -241,7 +251,9 @@ if uploaded_file is not None:
 
         df[age_col] = df[age_col].round(0).astype('Int64')
 
-        premiums = []
+        prem_excl_list = []
+        gst_list = []
+        premiums = []          # incl. GST
         statuses = []
         sa_used_list = []
         for idx, row in df.iterrows():
@@ -268,34 +280,48 @@ if uploaded_file is not None:
                     raise ValueError(f"Sum Assured must be between ₹{sa_min:,} and ₹{sa_max:,}")
 
                 r_base = get_rate(df_rates, tenure_map, r_age, r_tenure)
-                r_final = apply_gst(r_base)
-                premium = round(r_final * (r_sa / 100000), 2)
-                premiums.append(premium)
+                p_excl, p_gst, p_incl = premium_breakup(r_base, r_sa)
+                prem_excl_list.append(p_excl)
+                gst_list.append(p_gst)
+                premiums.append(p_incl)
                 statuses.append("✅")
                 sa_used_list.append(r_sa)
             except Exception as e:
+                prem_excl_list.append(None)
+                gst_list.append(None)
                 premiums.append(None)
                 statuses.append(f"❌ {e}")
                 sa_used_list.append(None)
 
         df["Sum Assured Used"] = sa_used_list
-        df["Premium"] = premiums
+        df["Premium (Excl. GST)"] = prem_excl_list
+        df[f"GST @ {GST_RATE_FIXED:g}%"] = gst_list
+        df["Premium (Incl. GST)"] = premiums
         df["Status"] = statuses
 
         display_sa_col = sa_col if sa_col else lo_col
-        core_cols = [name_col, age_col, tenure_col, display_sa_col, "Sum Assured Used", "Premium"]
+        core_cols = [name_col, age_col, tenure_col, display_sa_col, "Sum Assured Used",
+                     "Premium (Excl. GST)", f"GST @ {GST_RATE_FIXED:g}%", "Premium (Incl. GST)"]
         extra_cols = [c for c in df.columns if c not in core_cols]
         df = df[core_cols + extra_cols]
 
+        total_excl = pd.to_numeric(pd.Series(prem_excl_list), errors='coerce').sum()
+        total_gst = pd.to_numeric(pd.Series(gst_list), errors='coerce').sum()
         total_premium = pd.to_numeric(pd.Series(premiums), errors='coerce').sum()
-        st.metric("💰 Grand Total Premium", f"₹ {total_premium:,.2f}")
+
+        t1, t2, t3 = st.columns(3)
+        t1.metric("Total (Excl. GST)", f"₹ {total_excl:,.2f}")
+        t2.metric(f"Total GST @ {GST_RATE_FIXED:g}%", f"₹ {total_gst:,.2f}")
+        t3.metric("💰 Grand Total (Incl. GST)", f"₹ {total_premium:,.2f}")
 
         st.subheader("Rate Lookup Output")
         st.dataframe(df, use_container_width=True)
 
         total_row = {c: "" for c in df.columns}
         total_row[name_col] = "TOTAL PREMIUM"
-        total_row["Premium"] = round(total_premium, 2)
+        total_row["Premium (Excl. GST)"] = round(total_excl, 2)
+        total_row[f"GST @ {GST_RATE_FIXED:g}%"] = round(total_gst, 2)
+        total_row["Premium (Incl. GST)"] = round(total_premium, 2)
         df_out = pd.concat([df, pd.DataFrame([total_row])], ignore_index=True)
 
         output_file = "Rate_Output.xlsx"
