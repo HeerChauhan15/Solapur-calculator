@@ -18,10 +18,12 @@ st.markdown("Select plan details below")
 
 # Single Life only
 FILE_MAP = {
-    ("Level",    "Home Loan"): "home level.xlsx",
-    ("Level",    "LAP"):       "lap level.xlsx",
-    ("Reducing", "Home Loan"): "home loan reducing.xlsx",
-    ("Reducing", "LAP"):       "lap - reducing.xlsx",
+    ("Level",    "Home Loan"):     "home level.xlsx",
+    ("Level",    "LAP"):           "lap level.xlsx",
+    ("Level",    "Personal Loan"): "pl level.xlsx",
+    ("Reducing", "Home Loan"):     "home loan reducing.xlsx",
+    ("Reducing", "LAP"):           "lap - reducing.xlsx",
+    ("Reducing", "Personal Loan"): "pl reducing.xlsx",
 }
 
 # GST is fixed and always applied on top of the base rate.
@@ -127,18 +129,21 @@ def find_sum_assured_columns(df):
 
 col1, col2 = st.columns(2)
 with col1:
-    loan_type = st.selectbox("Select Loan Type", ["Home Loan", "LAP"])
+    loan_type = st.selectbox("Select Loan Type", ["Home Loan", "LAP", "Personal Loan"])
 with col2:
     cover_type = st.selectbox("Select Type of Cover", ["Level", "Reducing"])
 
 # ============================================
 # SUM ASSURED RANGE — rates in the backend files are per ₹1,00,000
 # Home Loan: ₹50,000 – ₹60,00,000 | LAP: ₹50,000 – ₹40,00,000
+# Personal Loan: ₹25,000 – ₹30,00,000
 # ============================================
 if loan_type == "Home Loan":
     sa_min, sa_max = 50000, 6000000
-else:
+elif loan_type == "LAP":
     sa_min, sa_max = 50000, 4000000
+else:  # Personal Loan
+    sa_min, sa_max = 25000, 3000000
 
 st.divider()
 
@@ -150,8 +155,10 @@ st.subheader("🔢 Manual Rate Lookup")
 
 if loan_type == "Home Loan":
     min_tenure, max_tenure = 2, 25
-else:
+elif loan_type == "LAP":
     min_tenure, max_tenure = 2, 10
+else:  # Personal Loan
+    min_tenure, max_tenure = 2, 5
 
 col3, col4 = st.columns(2)
 with col3:
@@ -219,8 +226,10 @@ if uploaded_file is not None:
 
         if loan_type == "Home Loan":
             min_t, max_t = 2, 25
-        else:
+        elif loan_type == "LAP":
             min_t, max_t = 2, 10
+        else:  # Personal Loan
+            min_t, max_t = 2, 5
 
         df_rates, tenure_map = load_rate_table(cover_type, loan_type)
 
